@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reading DaT scans with machines</title>
+<meta name="description" content="How team DataCouples approached the DrivenData DaT Parkinson's Challenge: the final pipeline, what worked, what didn't, and why.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1322'/%3E%3Cellipse cx='11' cy='16' rx='4' ry='8' fill='%23f6c343'/%3E%3Cellipse cx='21' cy='16' rx='4' ry='8' fill='%23e2571f'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f6f7f9;
+    --surface: #fbfcfd;
+    --ink: #14213d;
+    --ink-2: #4a5568;
+    --muted: #7a8494;
+    --rule: #d9dee7;
+    --grid: #e6e9ef;
+    --axis: #b9c0cc;
+    --link: #1f5fb4;
+    --code-bg: #eef1f5;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+    --better: #2a78d6; --worse: #e34948;
+    --good: #0ca30c; --critical: #d03b3b;
+    --tip-bg: #14213d; --tip-ink: #ffffff;
+    --scan-bg: #0d1322;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #0e1320; --surface: #131a2a; --ink: #e8ecf3; --ink-2: #b4bccb; --muted: #8791a3;
+      --rule: #273046; --grid: #1f2738; --axis: #3a445a; --link: #7fb0f0; --code-bg: #182033;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --better: #3987e5; --worse: #e66767;
+      --tip-bg: #e8ecf3; --tip-ink: #0e1320; --scan-bg: #070b14;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0e1320; --surface: #131a2a; --ink: #e8ecf3; --ink-2: #b4bccb; --muted: #8791a3;
+    --rule: #273046; --grid: #1f2738; --axis: #3a445a; --link: #7fb0f0; --code-bg: #182033;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --better: #3987e5; --worse: #e66767;
+    --tip-bg: #e8ecf3; --tip-ink: #0e1320; --scan-bg: #070b14;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 17px/1.65 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--link); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: max(20px, env(safe-area-inset-left)); }
+  .prose { max-width: 68ch; }
+  h1, h2, h3 { line-height: 1.15; letter-spacing: -0.015em; margin: 0; }
+  h2 { font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.25rem); font-weight: 600; margin-bottom: 0.6em; }
+  h3 { font-size: 1.15rem; font-weight: 600; margin: 1.6em 0 0.4em; }
+  p { margin: 0 0 1em; }
+  code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 16px 18px; border-radius: 8px; overflow-x: auto; font-size: 0.86rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+
+  /* nav */
+  .nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule); }
+  .nav .wrap { display: flex; align-items: center; gap: 20px; min-height: 56px; flex-wrap: wrap; }
+  .brand { font-weight: 600; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .nav a.l { color: var(--ink-2); text-decoration: none; font-size: 0.95rem; }
+  .nav a.l:hover { color: var(--ink); }
+  .theme { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.85rem; cursor: pointer; }
+  @media (max-width: 720px) { .nav a.l { display: none; } }
+
+  /* hero */
+  .hero { padding: clamp(48px, 8vw, 96px) 0 56px; }
+  .hero .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+  @media (max-width: 860px) { .hero .grid { grid-template-columns: 1fr; } }
+  .hero h1 { font-size: clamp(2.3rem, 1.4rem + 3.6vw, 4.1rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.02; margin-bottom: 0.45em; }
+  .lede { font-size: 1.16rem; color: var(--ink-2); max-width: 44ch; }
+  .facts { display: grid; grid-template-columns: repeat(3, auto); gap: 6px 28px; margin: 28px 0 0; padding: 0; justify-content: start; }
+  .facts dt { color: var(--muted); font-size: 0.88rem; }
+  .facts dd { margin: 0 0 2px; font-weight: 600; font-size: 1.25rem; }
+  @media (max-width: 520px) { .facts { grid-template-columns: repeat(2, auto); } }
+  .scan { background: var(--scan-bg); border-radius: 18px; padding: 22px 22px 16px; }
+  .scan svg { display: block; width: 100%; height: auto; }
+  .scan figcaption { color: #9aa6bd; font-size: 0.82rem; margin-top: 8px; line-height: 1.45; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--rule); scroll-margin-top: 60px; }
+
+  /* charts */
+  .figure { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 20px 20px 12px; margin: 26px 0 8px; position: relative; }
+  .figure h3 { margin: 0 0 2px; }
+  .figure .sub { color: var(--ink-2); font-size: 0.92rem; margin: 0 0 12px; }
+  .chart { width: 100%; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.88rem; color: var(--ink-2); margin: 4px 0 6px; padding: 0; list-style: none; }
+  .legend li { display: flex; align-items: center; gap: 7px; }
+  .sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .sw.dot { width: 10px; height: 10px; border-radius: 50%; }
+  .sw.dash { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px) !important; height: 2px; }
+  details { margin-top: 8px; font-size: 0.9rem; }
+  summary { cursor: pointer; color: var(--ink-2); }
+  .tip { position: absolute; pointer-events: none; background: var(--tip-bg); color: var(--tip-ink); font-size: 0.82rem; line-height: 1.4; padding: 7px 10px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); opacity: 0; transition: opacity 0.1s; z-index: 5; }
+  .tip.on { opacity: 1; }
+
+  /* tables */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; margin: 10px 0; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 500; white-space: nowrap; }
+  .tag.ok { color: var(--good); } .tag.no { color: var(--critical); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag.ok { color: #3ec43e; } :root:not([data-theme="light"]) .tag.no { color: #f07b7b; } }
+  :root[data-theme="dark"] .tag.ok { color: #3ec43e; } :root[data-theme="dark"] .tag.no { color: #f07b7b; }
+
+  /* pipeline */
+  .steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; counter-reset: s; border-top: 2px solid var(--ink); }
+  .steps li { counter-increment: s; padding: 16px 18px 18px 0; border-bottom: 1px solid var(--rule); }
+  .steps li::before { content: counter(s); display: block; font-weight: 700; font-size: 1.6rem; color: var(--muted); line-height: 1; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .steps b { display: block; margin-bottom: 4px; }
+  .steps span { color: var(--ink-2); font-size: 0.93rem; line-height: 1.5; display: block; }
+
+  /* worked list */
+  .why { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 40px; margin-top: 18px; }
+  @media (max-width: 760px) { .why { grid-template-columns: 1fr; } }
+  .why article { padding: 16px 0; border-bottom: 1px solid var(--rule); }
+  .why h3 { margin: 0 0 4px; }
+  .why .delta { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--better); }
+  .why p { margin: 0; color: var(--ink-2); font-size: 0.97rem; }
+
+  .note { border-left: 3px solid var(--s1); padding: 4px 0 4px 16px; color: var(--ink-2); }
+  footer { padding: 40px 0 64px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Sections">
+  <div class="wrap">
+    <a class="brand" href="#top">DaT scan classification</a>
+    <a class="l" href="#results">Results</a>
+    <a class="l" href="#pipeline">Pipeline</a>
+    <a class="l" href="#worked">What worked</a>
+    <a class="l" href="#didnt">What didn't</a>
+    <a class="l" href="#lessons">Lessons</a>
+    <a class="l" href="https://github.com/ahammadshawki8/dat-parkinsons-challenge">Code</a>
+    <button class="theme" id="theme" type="button" aria-label="Toggle colour theme">Dark</button>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap grid">
+    <div>
+      <h1>Reading dopamine transporter scans with machines</h1>
+      <p class="lede">Our entry to the DrivenData DaT Parkinson's Challenge: a registration-based imaging pipeline, a small ensemble of 2D networks, and about sixty experiments — most of which didn't work.</p>
+      <dl class="facts">
+        <div><dt>Best public log loss</dt><dd>0.2356</dd></div>
+        <div><dt>Where we started</dt><dd>0.2463</dd></div>
+        <div><dt>Public rank</dt><dd>#14</dd></div>
+      </dl>
+    </div>
+    <figure class="scan" aria-labelledby="scancap">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Illustration of striatal uptake: two full comma shapes on a normal scan, and smaller asymmetric dots on an abnormal scan">
+        <defs>
+          <radialGradient id="hot" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#fff3c4"/>
+            <stop offset="28%" stop-color="#f6c343"/>
+            <stop offset="58%" stop-color="#e2571f"/>
+            <stop offset="85%" stop-color="#6b1a0a"/>
+            <stop offset="100%" stop-color="#6b1a0a" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="warm" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#f6c343"/>
+            <stop offset="45%" stop-color="#e2571f"/>
+            <stop offset="85%" stop-color="#6b1a0a"/>
+            <stop offset="100%" stop-color="#6b1a0a" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="dim" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#e2571f"/>
+            <stop offset="60%" stop-color="#6b1a0a"/>
+            <stop offset="100%" stop-color="#6b1a0a" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="brain" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#3a1810" stop-opacity="0.9"/>
+            <stop offset="75%" stop-color="#22110c" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#0d1322" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="blur"><feGaussianBlur stdDeviation="5"/></filter>
+        </defs>
+        <!-- normal -->
+        <ellipse cx="130" cy="140" rx="112" ry="124" fill="url(#brain)"/>
+        <g filter="url(#blur)">
+          <path d="M100 92 C 72 100, 70 140, 86 176 C 92 188, 104 186, 104 172 C 100 150, 104 122, 116 106 C 122 96, 112 88, 100 92 Z" fill="url(#hot)"/>
+          <path d="M160 92 C 188 100, 190 140, 174 176 C 168 188, 156 186, 156 172 C 160 150, 156 122, 144 106 C 138 96, 148 88, 160 92 Z" fill="url(#hot)"/>
+        </g>
+        <!-- abnormal -->
+        <ellipse cx="390" cy="140" rx="112" ry="124" fill="url(#brain)"/>
+        <g filter="url(#blur)">
+          <ellipse cx="364" cy="112" rx="18" ry="22" fill="url(#warm)"/>
+          <path d="M372 94 C 394 98, 398 118, 390 130 C 384 138, 372 134, 370 124 C 368 112, 364 100, 372 94 Z" fill="url(#dim)" opacity="0.55"/>
+          <ellipse cx="416" cy="112" rx="13" ry="16" fill="url(#dim)"/>
+        </g>
+        <text x="130" y="288" text-anchor="middle" fill="#9aa6bd" font-size="14" font-family="IBM Plex Sans, system-ui, sans-serif">Normal: two "commas"</text>
+        <text x="390" y="288" text-anchor="middle" fill="#9aa6bd" font-size="14" font-family="IBM Plex Sans, system-ui, sans-serif">Abnormal: fading "full stops"</text>
+      </svg>
+      <figcaption id="scancap">A stylised axial view through the striatum, not a competition scan. Tracer uptake is shown in the "hot" colour map readers use. Abnormal scans lose the putamen first, often on one side.</figcaption>
+    </figure>
+  </div>
+</header>
+
+<main>
+<section id="task">
+  <div class="wrap"><div class="prose">
+    <h2>The task</h2>
+    <p>A DaT SPECT scan shows where a radioactive tracer binds to dopamine transporters. In a healthy brain it collects in the striatum as two bright, comma-shaped structures. In Parkinsonian syndromes the tail of that comma (the putamen) fades first.</p>
+    <p>The challenge supplied 1,362 labelled scans from ten French hospitals, each read by experts as normal or abnormal. Submissions were code that ran offline on hidden test scans and returned a probability for each; the score was log loss. Scans came from many cameras, with voxel sizes from 1.4 mm to 4.4 mm and more than 90 combinations of matrix size and spacing.</p>
+  </div></div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <div class="prose">
+      <h2>Results</h2>
+      <p>Every submission scored worse on the public leaderboard than in our local cross-validation. Other teams reported the same, which says the hidden test set is harder than the training data. What mattered was whether a change moved <em>both</em> numbers.</p>
+    </div>
+
+    <div class="figure">
+      <h3>Local validation and public leaderboard, by submission</h3>
+      <p class="sub">Log loss, lower is better. The dashed line is the public leader.</p>
+      <ul class="legend">
+        <li><span class="sw" style="background:var(--s1)"></span>Local nested CV</li>
+        <li><span class="sw" style="background:var(--s2)"></span>Public leaderboard</li>
+        <li><span class="sw dash"></span>Leader, 0.2154</li>
+      </ul>
+      <div class="chart" id="c-subs"></div>
+      <details><summary>Show data table</summary>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Submission</th><th>What changed</th><th class="num">Local CV</th><th class="num">Public LB</th></tr></thead>
+          <tbody id="t-subs"></tbody>
+        </table></div>
+      </details>
+    </div>
+    <p class="prose note">The two biggest leaderboard moves came from strong augmentation (v3) and the slice-sequence network (v7). Changes that only averaged more copies of existing models barely moved it.</p>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="wrap">
+    <div class="prose">
+      <h2>The final pipeline</h2>
+      <p>One shared library does the preprocessing for both training and inference, so the two can't drift apart. Every test scan is processed on its own, as the rules require.</p>
+    </div>
+    <ol class="steps">
+      <li><b>Load and orient</b><span>Read the NIfTI, reorient to RAS, average any 4-D frames.</span></li>
+      <li><b>Find the striatum</b><span>Head mask, vertex, then the brightest smoothed voxel in a band below it. The midline comes from the head, not the uptake, so one-sided loss can't pull it off-centre.</span></li>
+      <li><b>Normalise and crop</b><span>Divide by a trimmed background mean; resample once to a 2 mm, 112×160×160 mm box.</span></li>
+      <li><b>Register</b><span>Nine-parameter affine alignment on the GPU to a symmetric template built from normal training scans.</span></li>
+      <li><b>Measure</b><span>Caudate and anterior/posterior putamen binding ratios, extents and asymmetry: 173 left/right-invariant features.</span></li>
+      <li><b>Predict</b><span>2D EfficientNets on axial slabs (standard and dual-normalised), a slice-sequence network, LightGBM and a logistic model.</span></li>
+      <li><b>Stack</b><span>A logistic regression on out-of-fold outputs combines the families into a calibrated probability.</span></li>
+    </ol>
+    <div class="prose">
+      <h3>The slice-sequence network</h3>
+      <p>Nine 4 mm axial slices, from 16 mm below to 16 mm above the striatal peak, each pass through a shared ImageNet EfficientNet-B0. A bidirectional GRU reads them in order and gated attention decides which slices matter. Each slice carries three channels: background-normalised, self-normalised, and a 12 mm local context.</p>
+      <h3>Why the ensemble looks the way it does</h3>
+      <p>The final model averages 135 CNN checkpoints and 90 tabular models, bagged over two fold splits and 10-fold runs. One explicit weight table produces both the stacker's training inputs and the deployed model, and an assertion checks that the two agree.</p>
+    </div>
+  </div>
+</section>
+
+<section id="worked">
+  <div class="wrap">
+    <div class="prose">
+      <h2>What worked, and why</h2>
+      <p>Five changes improved the model by more than run-to-run noise. Each fixed a specific weakness rather than adding capacity.</p>
+    </div>
+    <div class="why">
+      <article>
+        <h3>Template registration and regional binding ratios</h3>
+        <p><span class="delta">0.2319 → 0.2153</span> in local CV. Aligning every scan to a common template lets us measure the caudate and putamen separately, the same quantities expert readers judge. The single best feature, worst-side posterior putamen uptake, reached an AUROC of 0.92 alone.</p>
+      </article>
+      <article>
+        <h3>Strong "unrealistic" blur and noise augmentation</h3>
+        <p><span class="delta">0.3529 → 0.2716</span> for CNNs on scanner types they never saw. Following Buddenkotte and Buchert (J Nucl Med, 2024), blurring and adding noise far beyond realistic levels taught the networks to ignore camera resolution. It was the change that moved the leaderboard most.</p>
+      </article>
+      <article>
+        <h3>Dual normalisation</h3>
+        <p><span class="delta">0.2372 → 0.2249</span> for a single CNN. Extra channels divided by each scan's own 99th percentile give a second view of intensity. A mathematically "cleaner" version that removed all dependence on the background estimate did worse, so the original design stayed.</p>
+      </article>
+      <article>
+        <h3>The slice-sequence network</h3>
+        <p><span class="delta">0.2014 → 0.1988</span> for the ensemble, and <span class="delta">−0.0039</span> on the public leaderboard. Averaging three thick slabs throws away how uptake changes from bottom to top; reading thin slices in order keeps it. It is also less correlated with the other CNNs (0.94), so it adds new information.</p>
+      </article>
+      <article>
+        <h3>Bagging over fold splits</h3>
+        <p><span class="delta">about −0.002</span> each time. Training the whole ensemble again on a different partition and averaging reduced variance, with a small but real leaderboard gain.</p>
+      </article>
+    </div>
+
+    <div class="figure">
+      <h3>Robustness to unseen scanners</h3>
+      <p class="sub">Log loss with random folds and with whole scanner types held out. Lower is better.</p>
+      <ul class="legend">
+        <li><span class="sw dot" style="background:var(--s1)"></span>Random folds</li>
+        <li><span class="sw dot" style="background:var(--s2)"></span>Held-out scanners</li>
+      </ul>
+      <div class="chart" id="c-robust"></div>
+      <details><summary>Show data table</summary>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Model</th><th class="num">Random folds</th><th class="num">Held-out scanners</th></tr></thead>
+          <tbody id="t-robust"></tbody>
+        </table></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section id="didnt">
+  <div class="wrap">
+    <div class="prose">
+      <h2>What didn't work, and why</h2>
+      <p>Each idea was tested against the current ensemble on the same folds and seeds. The chart shows the change in ensemble log loss; bars to the left helped, bars to the right hurt.</p>
+    </div>
+    <div class="figure">
+      <h3>Effect of each change on ensemble log loss</h3>
+      <p class="sub">Change versus the ensemble at the time it was tested. Negative is better.</p>
+      <ul class="legend">
+        <li><span class="sw dot" style="background:var(--better)"></span>Improved</li>
+        <li><span class="sw dot" style="background:var(--worse)"></span>Worse or no gain</li>
+      </ul>
+      <div class="chart" id="c-effects"></div>
+      <details><summary>Show data table</summary>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Change</th><th class="num">Δ log loss</th><th>Verdict</th></tr></thead>
+          <tbody id="t-effects"></tbody>
+        </table></div>
+      </details>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Idea</th><th>Result</th><th>Why it failed</th></tr></thead>
+        <tbody>
+          <tr><td>Temperature, affine and beta calibration</td><td class="num">±0.0001</td><td>The logistic stacker is already calibrated. A calibration submission also scored 0.2408 against 0.2405.</td></tr>
+          <tr><td>Probability floors (0.002–0.01)</td><td class="num">+0.0005 to +0.0030</td><td>Confident predictions were almost always right, so capping them only cost points.</td></tr>
+          <tr><td>Averaging probabilities instead of logits</td><td class="num">+0.0057</td><td>The stacker learns better weights than a fixed blend.</td></tr>
+          <tr><td>3D CNN, tri-plane views, ConvNeXt, 256 px inputs</td><td class="num">+0.0003 to +0.0019</td><td>At SPECT resolution (~8–10 mm) more pixels or views add noise, not information.</td></tr>
+          <tr><td>Hemisphere MIL and learned bilateral comparison</td><td class="num">+0.0000 / +0.0005</td><td>Splitting at the midline removes the context the network uses to compare sides.</td></tr>
+          <tr><td>Image + measurement fusion network</td><td class="num">+0.0010</td><td>The best single model (0.2234), but it duplicates what the tabular models already give the stacker.</td></tr>
+          <tr><td>Regional auxiliary targets</td><td class="num">+0.0006</td><td>The extra loss pulled capacity away from the main task.</td></tr>
+          <tr><td>Rigid-only registration, wider field of view</td><td class="num">+0.0009</td><td>Affine scaling to the template carries real signal; extra cortex is mostly noise.</td></tr>
+          <tr><td>Multi-template registration</td><td class="num">worse</td><td>The template a scan picks already depends on its label, which distorts the regions for exactly the borderline cases.</td></tr>
+          <tr><td>Frozen DINOv2 features</td><td class="num">−0.0002</td><td>A different representation (AUROC 0.93 alone), but not complementary enough to matter.</td></tr>
+          <tr><td>External pretrained DaT networks</td><td class="num">no gain</td><td>Their predictions correlated 0.93 with ours. PPMI-trained checkpoints were also barred from prizes.</td></tr>
+          <tr><td>SAM, frozen BatchNorm, per-scan blur, mixup, label smoothing</td><td class="num">±0.0000 to +0.0005</td><td>Training tweaks on an already heavily regularised recipe.</td></tr>
+          <tr><td>Training for 50 epochs instead of 25</td><td class="num">+0.0014</td><td>Even with strong augmentation the networks overfit past 25 epochs.</td></tr>
+          <tr><td>Model soup (weight averaging)</td><td class="num">much worse</td><td>Independently seeded runs don't share a loss basin.</td></tr>
+          <tr><td>Disagreement-based shrinkage, label-noise weighting</td><td class="num">+0.0031 / noise</td><td>Where the families disagree, the stacker's blend is already the best guess.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="lessons">
+  <div class="wrap"><div class="prose">
+    <h2>Lessons</h2>
+    <h3>Measure noise before believing a gain</h3>
+    <p>Two identical training runs differed by 0.004 in log loss. Several "improvements" were smaller than that and vanished once three seeds were averaged. Comparisons were made paired, on the same folds and seeds, with a bootstrap of the per-scan differences.</p>
+    <h3>A proxy for the leaderboard helps, until it doesn't</h3>
+    <p>Holding out whole scanner types reproduced one public score almost exactly (0.2444 against 0.2446) and correctly flagged strong augmentation as a big win. It over-predicted later gains, so it guided choices rather than replacing submissions.</p>
+    <h3>Check that what you evaluate is what you ship</h3>
+    <p>An external review found the deployed ensemble weighted two runs 2:1 while validation weighted them 1:1. The effect was negligible (0.2015 against 0.2014), but it led to one weight table that drives both, with an assertion. An evaluation leak in a bagged comparison also once produced a fake 0.15; results that look too good get checked first.</p>
+    <h3>Simulations are not evidence</h3>
+    <p>A label-noise simulation predicted that calibration would gain 0.009 on the leaderboard. The real submission lost 0.0003. From then on, a change needed a measured local gain before it earned a submission.</p>
+  </div></div>
+</section>
+
+<section id="reproduce">
+  <div class="wrap"><div class="prose">
+    <h2>Reproduce it</h2>
+    <p>The <a href="https://github.com/ahammadshawki8/dat-parkinsons-challenge">repository</a> has the full code, the nine training configurations behind the final ensemble, and one script that rebuilds and verifies it.</p>
+<pre><code># 1. put the competition data in data/niftis/, data/train_labels.csv and data/smoke/
+# 2. Python 3.12, PyTorch for your CUDA version, then:
+pip install -r requirements.txt
+# 3. preprocess, train, bag and verify (about 5 hours on one 8 GB GPU)
+bash reproduce.sh</code></pre>
+    <p>Every submission was checked the same way before upload: a clean unzip, a run on the organisers' smoke data, a forced failure of every preprocessing worker, a parity check against the training pipeline, and an import under the competition's Python 3.12 package versions.</p>
+    <h3>Data and rules</h3>
+    <p>The repository and this page contain code and whole-dataset aggregate metrics only. No scans, labels, per-scan predictions, derived features or trained weights are published. The only pretrained weights are ImageNet checkpoints from <code>timm</code>.</p>
+  </div></div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Built by team DataCouples for the DrivenData DaT Parkinson's Challenge, 2026. The code is on <a href="https://github.com/ahammadshawki8/dat-parkinsons-challenge">GitHub</a> under the MIT License.</p>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // ---------- theme toggle ----------
+  const root = document.documentElement;
+  const btn = document.getElementById("theme");
+  const sysDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = () => root.dataset.theme ? root.dataset.theme === "dark" : sysDark();
+  const label = () => { btn.textContent = isDark() ? "Light" : "Dark"; };
+  try { const t = localStorage.getItem("theme"); if (t) root.dataset.theme = t; } catch (e) {}
+  label();
+  btn.addEventListener("click", () => {
+    root.dataset.theme = isDark() ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+    label(); drawAll();
+  });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { label(); drawAll(); });
+
+  // ---------- data (whole-dataset aggregates only) ----------
+  const SUBS = [
+    { id: "v1", what: "Registration, regional features, 2D CNNs, stack", cv: 0.2120, lb: 0.2463 },
+    { id: "v2", what: "Bagged over a second fold split", cv: 0.2111, lb: 0.2446 },
+    { id: "v3", what: "Strong blur/noise augmentation", cv: 0.2035, lb: 0.2405 },
+    { id: "v3cal", what: "v3 with temperature and floor", cv: 0.2066, lb: 0.2408 },
+    { id: "v6", what: "Dual normalisation, 10-fold runs", cv: 0.2020, lb: 0.2403 },
+    { id: "v7", what: "Slice-sequence network added", cv: 0.1988, lb: 0.2364 },
+    { id: "v8", what: "Sequence network bagged (final)", cv: 0.1990, lb: 0.2356 },
+    { id: "final B", what: "Plain EfficientNets removed", cv: 0.1991, lb: 0.2364 },
+  ];
+  const ROBUST = [
+    { m: "CNNs, weak augmentation", n: ["CNNs", "weak aug."], r: 0.2568, h: 0.3529 },
+    { m: "CNNs, strong augmentation", n: ["CNNs", "strong aug."], r: 0.2335, h: 0.2716 },
+    { m: "Logistic model on features", n: ["Logistic", "on features"], r: 0.2325, h: 0.2582 },
+  ];
+  const EFFECTS = [
+    { c: "Registration + regional features", d: -0.0166 },
+    { c: "Strong augmentation", d: -0.0045 },
+    { c: "Slice-sequence network", d: -0.0026 },
+    { c: "Bagging a second split", d: -0.0022 },
+    { c: "Dual normalisation", d: -0.0015 },
+    { c: "Frozen DINOv2 features", d: -0.0002 },
+    { c: "Calibration (temp/affine/beta)", d: 0.0000 },
+    { c: "Mixup α = 0.2", d: 0.0000 },
+    { c: "Label smoothing", d: 0.0002 },
+    { c: "SAM optimiser", d: 0.0005 },
+    { c: "Bilateral comparison", d: 0.0005 },
+    { c: "Regional auxiliary targets", d: 0.0006 },
+    { c: "Acquisition-balanced weights", d: 0.0006 },
+    { c: "Rigid-only registration", d: 0.0009 },
+    { c: "Wide field of view", d: 0.0009 },
+    { c: "Image + feature fusion", d: 0.0010 },
+    { c: "3D CNN", d: 0.0012 },
+    { c: "Tri-plane views", d: 0.0019 },
+    { c: "Scale-invariant dual branch", d: 0.0030 },
+    { c: "Disagreement shrinkage", d: 0.0031 },
+    { c: "Probability pooling", d: 0.0057 },
+  ];
+
+  // ---------- helpers ----------
+  const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+  const txt = (parent, x, y, s, attrs = {}) => { const t = el("text", Object.assign({ x, y, fill: css("--muted"), "font-size": 12, "font-family": "IBM Plex Sans, system-ui, sans-serif" }, attrs), parent); t.textContent = s; return t; };
+  const f4 = (v) => v.toFixed(4);
+  const sgn = (v) => (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(4);
+  function tipFor(fig) {
+    let t = fig.querySelector(".tip");
+    if (!t) { t = document.createElement("div"); t.className = "tip"; t.setAttribute("role", "status"); fig.appendChild(t); }
+    return t;
+  }
+  function showTip(fig, evt, html) {
+    const t = tipFor(fig); const r = fig.getBoundingClientRect();
+    t.innerHTML = html; t.style.left = (evt.clientX - r.left) + "px"; t.style.top = (evt.clientY - r.top) + "px"; t.classList.add("on");
+  }
+  const hideTip = (fig) => tipFor(fig).classList.remove("on");
+
+  // ---------- chart 1: CV vs LB lines ----------
+  function drawSubs() {
+    const host = document.getElementById("c-subs"); host.innerHTML = "";
+    const fig = host.closest(".figure");
+    const W = Math.max(320, host.clientWidth), H = W < 560 ? 300 : 340;
+    const m = { l: 52, r: W < 560 ? 18 : 90, t: 16, b: 46 };
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Line chart of local CV and public leaderboard log loss for each submission" }, host);
+    const y0 = 0.195, y1 = 0.250;
+    const X = (i) => m.l + i * (W - m.l - m.r) / (SUBS.length - 1);
+    const Y = (v) => m.t + (y1 - v) / (y1 - y0) * (H - m.t - m.b);
+    for (let v = 0.20; v <= 0.2501; v += 0.01) {
+      el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css("--grid"), "stroke-width": 1 }, svg);
+      txt(svg, m.l - 8, Y(v) + 4, v.toFixed(2), { "text-anchor": "end" });
+    }
+    el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: css("--axis") }, svg);
+    SUBS.forEach((s, i) => txt(svg, X(i), H - m.b + 20, s.id, { "text-anchor": "middle", "font-size": W < 560 ? 10 : 12 }));
+    // leader reference (off-scale below the band -> draw at its value if visible)
+    const lead = 0.2154;
+    el("line", { x1: m.l, x2: W - m.r, y1: Y(lead), y2: Y(lead), stroke: css("--muted"), "stroke-dasharray": "4 3", "stroke-width": 1.5 }, svg);
+    txt(svg, W - m.r - 4, Y(lead) - 6, "leader 0.2154", { "text-anchor": "end", fill: css("--ink-2") });
+    const series = [{ k: "cv", c: css("--s1"), name: "Local CV" }, { k: "lb", c: css("--s2"), name: "Public LB" }];
+    series.forEach((s) => {
+      const d = SUBS.map((p, i) => `${i ? "L" : "M"}${X(i)},${Y(p[s.k])}`).join("");
+      el("path", { d, fill: "none", stroke: s.c, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+      SUBS.forEach((p, i) => el("circle", { cx: X(i), cy: Y(p[s.k]), r: 4, fill: s.c, stroke: css("--surface"), "stroke-width": 2 }, svg));
+      if (W >= 560) { const last = SUBS[SUBS.length - 1]; txt(svg, X(SUBS.length - 1) + 10, Y(last[s.k]) + 4, s.name, { fill: css("--ink-2") }); }
+    });
+    // direct labels on the best LB point
+    const bi = SUBS.findIndex((p) => p.id === "v8");
+    txt(svg, X(bi), Y(SUBS[bi].lb) - 12, "0.2356", { "text-anchor": "middle", fill: css("--ink"), "font-weight": 600 });
+    // crosshair hover
+    const cross = el("line", { y1: m.t, y2: H - m.b, stroke: css("--axis"), "stroke-width": 1, opacity: 0 }, svg);
+    const hit = el("rect", { x: m.l - 20, y: m.t, width: W - m.l - m.r + 40, height: H - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => {
+      const pt = svg.getBoundingClientRect(); const sx = (e.clientX - pt.left) * W / pt.width;
+      const i = Math.max(0, Math.min(SUBS.length - 1, Math.round((sx - m.l) / ((W - m.l - m.r) / (SUBS.length - 1)))));
+      cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
+      const p = SUBS[i];
+      showTip(fig, e, `<b>${p.id}</b>: ${p.what}<br>Local CV ${f4(p.cv)}<br>Public leaderboard ${f4(p.lb)}`);
+    });
+    hit.addEventListener("pointerleave", () => { cross.setAttribute("opacity", 0); hideTip(fig); });
+  }
+
+  // ---------- chart 2: robustness grouped bars ----------
+  function drawRobust() {
+    const host = document.getElementById("c-robust"); host.innerHTML = "";
+    const fig = host.closest(".figure");
+    const W = Math.max(320, host.clientWidth), H = 280;
+    const narrow = W < 600;
+    const m = { l: narrow ? 36 : 52, r: 16, t: 20, b: 52 };
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Grouped bar chart of log loss with random folds and held-out scanners" }, host);
+    const y1 = 0.40;
+    const Y = (v) => m.t + (y1 - v) / y1 * (H - m.t - m.b);
+    for (let v = 0; v <= y1 + 1e-9; v += 0.1) {
+      el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? css("--axis") : css("--grid") }, svg);
+      txt(svg, m.l - 8, Y(v) + 4, v.toFixed(1), { "text-anchor": "end" });
+    }
+    const gw = (W - m.l - m.r) / ROBUST.length;
+    const bw = Math.min(46, gw * 0.28);
+    ROBUST.forEach((g, i) => {
+      const cx = m.l + gw * (i + 0.5);
+      [["r", css("--s1"), "Random folds", -1], ["h", css("--s2"), "Held-out scanners", 1]].forEach(([k, c, name, side]) => {
+        const x = cx + (side < 0 ? -bw - 1 : 1);
+        const top = Y(g[k]), base = Y(0);
+        const r = Math.min(4, bw / 2);
+        const d = `M${x},${base} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${base} Z`;
+        const bar = el("path", { d, fill: c }, svg);
+        txt(svg, x + bw / 2, top - 6, g[k].toFixed(3), { "text-anchor": "middle", fill: css("--ink-2"), "font-size": narrow ? 9.5 : 11 });
+        const hit = el("rect", { x: x - 2, y: m.t, width: bw + 4, height: base - m.t, fill: "transparent" }, svg);
+        hit.addEventListener("pointermove", (e) => showTip(fig, e, `<b>${g.m}</b><br>${name}: ${f4(g[k])}`));
+        hit.addEventListener("pointerleave", () => hideTip(fig));
+      });
+      const words = narrow ? g.n : g.m.split(", ");
+      words.forEach((w, j) => txt(svg, cx, H - m.b + 18 + j * 15, w, { "text-anchor": "middle", fill: css("--ink-2") }));
+    });
+  }
+
+  // ---------- chart 3: diverging effects ----------
+  function drawEffects() {
+    const host = document.getElementById("c-effects"); host.innerHTML = "";
+    const fig = host.closest(".figure");
+    const W = Math.max(320, host.clientWidth);
+    const narrow = W < 600;
+    const rowH = 24, m = { l: narrow ? 150 : 230, r: 58, t: 26, b: 12 };
+    const H = m.t + m.b + rowH * EFFECTS.length;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Diverging bar chart of the change in ensemble log loss for each idea" }, host);
+    const lo = -0.018, hi = 0.007;
+    const X = (v) => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r);
+    (narrow ? [-0.015, 0] : [-0.015, -0.010, -0.005, 0, 0.005]).forEach((v) => {
+      el("line", { x1: X(v), x2: X(v), y1: m.t - 6, y2: H - m.b, stroke: v === 0 ? css("--axis") : css("--grid"), "stroke-width": v === 0 ? 1.5 : 1 }, svg);
+      txt(svg, X(v), m.t - 10, (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(3), { "text-anchor": "middle", "font-size": 11 });
+    });
+    EFFECTS.forEach((e, i) => {
+      const y = m.t + i * rowH + 4, h = rowH - 8;
+      const better = e.d < 0;
+      const c = better ? css("--better") : css("--worse");
+      const x0 = X(0), x1 = X(e.d);
+      const x = Math.min(x0, x1), w = Math.max(2, Math.abs(x1 - x0));
+      el("rect", { x, y, width: w, height: h, rx: Math.min(4, w / 2), fill: c }, svg);
+      let label = e.c;
+      if (narrow && label.length > 22) label = label.slice(0, 21) + "…";
+      txt(svg, m.l - 10, y + h - 3, label, { "text-anchor": "end", fill: css("--ink"), "font-size": narrow ? 11 : 12.5 });
+      if (better && w > 60) {  // long bars carry their value inside, clear of the row label
+        txt(svg, x + 6, y + h - 3, sgn(e.d), { "text-anchor": "start", fill: "#ffffff", "font-size": 11, "font-weight": 600 });
+      } else {
+        txt(svg, (better ? x : x + w) + (better ? -6 : 6), y + h - 3, sgn(e.d), { "text-anchor": better ? "end" : "start", fill: css("--ink-2"), "font-size": 11 });
+      }
+      const hit = el("rect", { x: 0, y: y - 4, width: W, height: rowH, fill: "transparent" }, svg);
+      hit.addEventListener("pointermove", (ev) => showTip(fig, ev, `<b>${e.c}</b><br>Δ ensemble log loss ${sgn(e.d)}`));
+      hit.addEventListener("pointerleave", () => hideTip(fig));
+    });
+  }
+
+  // ---------- tables ----------
+  document.getElementById("t-subs").innerHTML = SUBS.map((s) => `<tr><td>${s.id}</td><td>${s.what}</td><td class="num">${f4(s.cv)}</td><td class="num">${f4(s.lb)}</td></tr>`).join("");
+  document.getElementById("t-robust").innerHTML = ROBUST.map((r) => `<tr><td>${r.m}</td><td class="num">${f4(r.r)}</td><td class="num">${f4(r.h)}</td></tr>`).join("");
+  document.getElementById("t-effects").innerHTML = EFFECTS.map((e) => `<tr><td>${e.c}</td><td class="num">${sgn(e.d)}</td><td>${e.d < 0 ? '<span class="tag ok">✓ Helped</span>' : '<span class="tag no">✕ No gain</span>'}</td></tr>`).join("");
+
+  function drawAll() { drawSubs(); drawRobust(); drawEffects(); }
+  let raf; window.addEventListener("resize", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(drawAll); });
+  drawAll();
+})();
+</script>
+</body>
+</html>

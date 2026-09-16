@@ -1,0 +1,23 @@
+# Competition data and anything derived from it must never be committed (competition rules).
+data/
+cache/
+cache_*/
+runs/
+eda/
+*.nii
+*.nii.gz
+*.npy
+*.pt
+*.zip
+*.tar.gz
+*.csv
+!configs/*.json
+
+# local working files
+CLAUDE.md
+SUBMIT_NOW.md
+_restructure.py
+__pycache__/
+*.pyc
+.venv/
+.playwright-mcp/

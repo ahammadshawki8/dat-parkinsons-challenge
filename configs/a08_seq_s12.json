@@ -1,0 +1,27 @@
+{
+  "split_seed": 2026,
+  "lr_adjust": true,
+  "nets": [
+    {
+      "name": "seq",
+      "kind": "2d",
+      "backbone": "efficientnet_b0.ra_in1k",
+      "size": 128,
+      "views": "seq",
+      "epochs": 25,
+      "lr": 0.0004,
+      "wd": 0.01,
+      "bs": 16,
+      "seeds": [
+        1,
+        2
+      ],
+      "aug": {
+        "blur_p": 0.8,
+        "blur_max": 4.0,
+        "noise": 0.3,
+        "noise_p": 0.7
+      }
+    }
+  ]
+}
