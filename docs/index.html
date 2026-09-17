@@ -157,9 +157,9 @@
       <h1>Reading dopamine transporter scans with machines</h1>
       <p class="lede">Our entry to the DrivenData DaT Parkinson's Challenge: a registration-based imaging pipeline, a small ensemble of 2D networks, and about sixty experiments — most of which didn't work.</p>
       <dl class="facts">
-        <div><dt>Best public log loss</dt><dd>0.2356</dd></div>
-        <div><dt>Where we started</dt><dd>0.2463</dd></div>
-        <div><dt>Public rank</dt><dd>#14</dd></div>
+        <div><dt>Final private rank</dt><dd>#10</dd></div>
+        <div><dt>Best private log loss</dt><dd>0.2760</dd></div>
+        <div><dt>Best public log loss</dt><dd>0.2344</dd></div>
       </dl>
     </div>
     <figure class="scan" aria-labelledby="scancap">
@@ -224,26 +224,36 @@
   <div class="wrap">
     <div class="prose">
       <h2>Results</h2>
-      <p>Every submission scored worse on the public leaderboard than in our local cross-validation. Other teams reported the same, which says the hidden test set is harder than the training data. What mattered was whether a change moved <em>both</em> numbers.</p>
+      <p>We finished <strong>10th on the private leaderboard</strong>, up from 15th on the public one, with a best private log loss of 0.2760. Every submission scored worse on the public test scans than in local cross-validation, and about 0.04 worse again on the private scans; other teams saw the same. The order of our submissions barely changed from one board to the other, so the improvements were real: 0.2851 to 0.2760 on the private board from the first submission to the last.</p>
     </div>
 
     <div class="figure">
-      <h3>Local validation and public leaderboard, by submission</h3>
-      <p class="sub">Log loss, lower is better. The dashed line is the public leader.</p>
+      <h3>Local validation, public and private leaderboard, by submission</h3>
+      <p class="sub">Log loss, lower is better. The dashed line is the private-leaderboard winner.</p>
       <ul class="legend">
         <li><span class="sw" style="background:var(--s1)"></span>Local nested CV</li>
         <li><span class="sw" style="background:var(--s2)"></span>Public leaderboard</li>
-        <li><span class="sw dash"></span>Leader, 0.2154</li>
+        <li><span class="sw" style="background:var(--s3)"></span>Private leaderboard (final)</li>
+        <li><span class="sw dash"></span>Private winner, 0.2532</li>
       </ul>
       <div class="chart" id="c-subs"></div>
       <details><summary>Show data table</summary>
         <div class="tablewrap"><table>
-          <thead><tr><th>Submission</th><th>What changed</th><th class="num">Local CV</th><th class="num">Public LB</th></tr></thead>
+          <thead><tr><th>Submission</th><th>What changed</th><th class="num">Local CV</th><th class="num">Public LB</th><th class="num">Private LB</th></tr></thead>
           <tbody id="t-subs"></tbody>
         </table></div>
       </details>
     </div>
-    <p class="prose note">The two biggest leaderboard moves came from strong augmentation (v3) and the slice-sequence network (v7). Changes that only averaged more copies of existing models barely moved it.</p>
+    <p class="prose note">The two biggest leaderboard moves came from strong augmentation (v3) and the slice-sequence network (v7). Changes that only averaged more copies of existing models barely moved the public score. The last upload, final A, gave the slice-sequence model twice the weight and was the best submission on both boards.</p>
+
+    <div class="prose">
+      <h3>Final standings</h3>
+      <p>Places 4 to 10 were separated by less than 0.004. Our AUROC was the second highest in the top ten: the models ranked scans well, but on the harder private scans they were too confident on the cases they got wrong, and log loss punishes that heavily.</p>
+    </div>
+    <div class="tablewrap" style="max-width: 720px"><table>
+      <thead><tr><th class="num">Rank</th><th>Team</th><th class="num">Private log loss</th><th class="num">AUROC</th></tr></thead>
+      <tbody id="t-final"></tbody>
+    </table></div>
   </div>
 </section>
 
@@ -375,7 +385,9 @@
     <h3>Check that what you evaluate is what you ship</h3>
     <p>An external review found the deployed ensemble weighted two runs 2:1 while validation weighted them 1:1. The effect was negligible (0.2015 against 0.2014), but it led to one weight table that drives both, with an assertion. An evaluation leak in a bagged comparison also once produced a fake 0.15; results that look too good get checked first.</p>
     <h3>Simulations are not evidence</h3>
-    <p>A label-noise simulation predicted that calibration would gain 0.009 on the leaderboard. The real submission lost 0.0003. From then on, a change needed a measured local gain before it earned a submission.</p>
+    <p>A label-noise simulation predicted that calibration would gain 0.009 on the leaderboard. The real submission lost 0.0003 on the public board. From then on, a change needed a measured local gain before it earned a submission.</p>
+    <h3>The public board can mislead in both directions</h3>
+    <p>The same calibrated submission turned out <em>better</em> than its uncalibrated twin on the private board (0.2794 against 0.2806). Softer probabilities help when the test scans are harder than the training scans. With a small public set, it is worth keeping one mildly calibrated variant among the final submissions even when the public score doesn't reward it.</p>
   </div></div>
 </section>
 
@@ -420,14 +432,27 @@ bash reproduce.sh</code></pre>
 
   // ---------- data (whole-dataset aggregates only) ----------
   const SUBS = [
-    { id: "v1", what: "Registration, regional features, 2D CNNs, stack", cv: 0.2120, lb: 0.2463 },
-    { id: "v2", what: "Bagged over a second fold split", cv: 0.2111, lb: 0.2446 },
-    { id: "v3", what: "Strong blur/noise augmentation", cv: 0.2035, lb: 0.2405 },
-    { id: "v3cal", what: "v3 with temperature and floor", cv: 0.2066, lb: 0.2408 },
-    { id: "v6", what: "Dual normalisation, 10-fold runs", cv: 0.2020, lb: 0.2403 },
-    { id: "v7", what: "Slice-sequence network added", cv: 0.1988, lb: 0.2364 },
-    { id: "v8", what: "Sequence network bagged (final)", cv: 0.1990, lb: 0.2356 },
-    { id: "final B", what: "Plain EfficientNets removed", cv: 0.1991, lb: 0.2364 },
+    { id: "v1", what: "Registration, regional features, 2D CNNs, stack", cv: 0.2120, lb: 0.2463, pv: 0.2851 },
+    { id: "v2", what: "Bagged over a second fold split", cv: 0.2111, lb: 0.2446, pv: 0.2844 },
+    { id: "v3", what: "Strong blur/noise augmentation", cv: 0.2035, lb: 0.2405, pv: 0.2806 },
+    { id: "v3cal", what: "v3 with temperature and floor", cv: 0.2066, lb: 0.2408, pv: 0.2794 },
+    { id: "v6", what: "Dual normalisation, 10-fold runs", cv: 0.2020, lb: 0.2403, pv: 0.2826 },
+    { id: "v7", what: "Slice-sequence network added", cv: 0.1988, lb: 0.2364, pv: 0.2800 },
+    { id: "v8", what: "Sequence network bagged over two splits", cv: 0.1990, lb: 0.2356, pv: 0.2783 },
+    { id: "final B", what: "Plain EfficientNets removed", cv: 0.1991, lb: 0.2364, pv: 0.2797 },
+    { id: "final A", what: "v8 with the sequence model at double weight (best)", cv: 0.1991, lb: 0.2344, pv: 0.2760 },
+  ];
+  const FINAL = [
+    { r: 1, t: "TheAvengers", ll: 0.2532, auc: 0.9590 },
+    { r: 2, t: "Tigertech", ll: 0.2647, auc: 0.9522 },
+    { r: 3, t: "Shivom", ll: 0.2708, auc: 0.9491 },
+    { r: 4, t: "Suyash92", ll: 0.2727, auc: 0.9488 },
+    { r: 5, t: "NavAttack", ll: 0.2731, auc: 0.9524 },
+    { r: 6, t: "paulonium", ll: 0.2732, auc: 0.9489 },
+    { r: 7, t: "Shatatarka", ll: 0.2741, auc: 0.9488 },
+    { r: 8, t: "AAF Team", ll: 0.2748, auc: 0.9510 },
+    { r: 9, t: "Tensla", ll: 0.2751, auc: 0.9480 },
+    { r: 10, t: "DataCouples (us)", ll: 0.2760, auc: 0.9551, us: true },
   ];
   const ROBUST = [
     { m: "CNNs, weak augmentation", n: ["CNNs", "weak aug."], r: 0.2568, h: 0.3529 },
@@ -482,21 +507,21 @@ bash reproduce.sh</code></pre>
     const fig = host.closest(".figure");
     const W = Math.max(320, host.clientWidth), H = W < 560 ? 300 : 340;
     const m = { l: 52, r: W < 560 ? 18 : 90, t: 16, b: 46 };
-    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Line chart of local CV and public leaderboard log loss for each submission" }, host);
-    const y0 = 0.195, y1 = 0.250;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Line chart of local CV, public and private leaderboard log loss for each submission" }, host);
+    const y0 = 0.195, y1 = 0.290;
     const X = (i) => m.l + i * (W - m.l - m.r) / (SUBS.length - 1);
     const Y = (v) => m.t + (y1 - v) / (y1 - y0) * (H - m.t - m.b);
-    for (let v = 0.20; v <= 0.2501; v += 0.01) {
+    for (let v = 0.20; v <= 0.2901; v += 0.01) {
       el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css("--grid"), "stroke-width": 1 }, svg);
       txt(svg, m.l - 8, Y(v) + 4, v.toFixed(2), { "text-anchor": "end" });
     }
     el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: css("--axis") }, svg);
     SUBS.forEach((s, i) => txt(svg, X(i), H - m.b + 20, s.id, { "text-anchor": "middle", "font-size": W < 560 ? 10 : 12 }));
     // leader reference (off-scale below the band -> draw at its value if visible)
-    const lead = 0.2154;
+    const lead = 0.2532;
     el("line", { x1: m.l, x2: W - m.r, y1: Y(lead), y2: Y(lead), stroke: css("--muted"), "stroke-dasharray": "4 3", "stroke-width": 1.5 }, svg);
-    txt(svg, W - m.r - 4, Y(lead) - 6, "leader 0.2154", { "text-anchor": "end", fill: css("--ink-2") });
-    const series = [{ k: "cv", c: css("--s1"), name: "Local CV" }, { k: "lb", c: css("--s2"), name: "Public LB" }];
+    txt(svg, m.l + 6, Y(lead) - 6, "private winner 0.2532", { "text-anchor": "start", fill: css("--ink-2") });
+    const series = [{ k: "cv", c: css("--s1"), name: "Local CV" }, { k: "lb", c: css("--s2"), name: "Public LB" }, { k: "pv", c: css("--s3"), name: "Private LB" }];
     series.forEach((s) => {
       const d = SUBS.map((p, i) => `${i ? "L" : "M"}${X(i)},${Y(p[s.k])}`).join("");
       el("path", { d, fill: "none", stroke: s.c, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
@@ -504,8 +529,9 @@ bash reproduce.sh</code></pre>
       if (W >= 560) { const last = SUBS[SUBS.length - 1]; txt(svg, X(SUBS.length - 1) + 10, Y(last[s.k]) + 4, s.name, { fill: css("--ink-2") }); }
     });
     // direct labels on the best LB point
-    const bi = SUBS.findIndex((p) => p.id === "v8");
-    txt(svg, X(bi), Y(SUBS[bi].lb) - 12, "0.2356", { "text-anchor": "middle", fill: css("--ink"), "font-weight": 600 });
+    const bi = SUBS.length - 1;
+    txt(svg, X(bi), Y(SUBS[bi].pv) + 20, "0.2760", { "text-anchor": "middle", fill: css("--ink"), "font-weight": 600 });
+    txt(svg, X(bi), Y(SUBS[bi].lb) - 12, "0.2344", { "text-anchor": "middle", fill: css("--ink"), "font-weight": 600 });
     // crosshair hover
     const cross = el("line", { y1: m.t, y2: H - m.b, stroke: css("--axis"), "stroke-width": 1, opacity: 0 }, svg);
     const hit = el("rect", { x: m.l - 20, y: m.t, width: W - m.l - m.r + 40, height: H - m.t - m.b, fill: "transparent" }, svg);
@@ -514,7 +540,7 @@ bash reproduce.sh</code></pre>
       const i = Math.max(0, Math.min(SUBS.length - 1, Math.round((sx - m.l) / ((W - m.l - m.r) / (SUBS.length - 1)))));
       cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
       const p = SUBS[i];
-      showTip(fig, e, `<b>${p.id}</b>: ${p.what}<br>Local CV ${f4(p.cv)}<br>Public leaderboard ${f4(p.lb)}`);
+      showTip(fig, e, `<b>${p.id}</b>: ${p.what}<br>Local CV ${f4(p.cv)}<br>Public leaderboard ${f4(p.lb)}<br>Private leaderboard ${f4(p.pv)}`);
     });
     hit.addEventListener("pointerleave", () => { cross.setAttribute("opacity", 0); hideTip(fig); });
   }
@@ -590,7 +616,8 @@ bash reproduce.sh</code></pre>
   }
 
   // ---------- tables ----------
-  document.getElementById("t-subs").innerHTML = SUBS.map((s) => `<tr><td>${s.id}</td><td>${s.what}</td><td class="num">${f4(s.cv)}</td><td class="num">${f4(s.lb)}</td></tr>`).join("");
+  document.getElementById("t-subs").innerHTML = SUBS.map((s) => `<tr><td>${s.id}</td><td>${s.what}</td><td class="num">${f4(s.cv)}</td><td class="num">${f4(s.lb)}</td><td class="num">${f4(s.pv)}</td></tr>`).join("");
+  document.getElementById("t-final").innerHTML = FINAL.map((f) => `<tr><td class="num">${f.r}</td><td>${f.us ? `<strong>${f.t}</strong>` : f.t}</td><td class="num">${f4(f.ll)}</td><td class="num">${f.auc.toFixed(4)}</td></tr>`).join("");
   document.getElementById("t-robust").innerHTML = ROBUST.map((r) => `<tr><td>${r.m}</td><td class="num">${f4(r.r)}</td><td class="num">${f4(r.h)}</td></tr>`).join("");
   document.getElementById("t-effects").innerHTML = EFFECTS.map((e) => `<tr><td>${e.c}</td><td class="num">${sgn(e.d)}</td><td>${e.d < 0 ? '<span class="tag ok">✓ Helped</span>' : '<span class="tag no">✕ No gain</span>'}</td></tr>`).join("");
 

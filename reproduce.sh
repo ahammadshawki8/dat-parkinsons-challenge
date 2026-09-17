@@ -1,5 +1,6 @@
 #!/bin/bash
-# Rebuilds the final v8 ensemble (public LB 0.2356) from the competition training data.
+# Rebuilds the final ensembles from the competition training data: v8 (public 0.2356, private 0.2783)
+# and final A, the best submission (public 0.2344, private 0.2760, 10th place).
 # Expects:  data/niftis/*.nii.gz  and  data/train_labels.csv   (download from DrivenData; not included).
 # GPU runs are not bit-exact (cuDNN non-determinism): expect run-to-run differences of ~0.004 per model.
 set -euo pipefail
@@ -19,6 +20,8 @@ $PY scripts/assemble_v3.py                 # runs/v3_bag
 $PY scripts/assemble_v5.py --with-v3       # runs/v5_bag
 $PY scripts/assemble_v6.py                 # runs/v6_bag
 $PY scripts/assemble_v8.py v8 2            # runs/v8 + submission_v8.zip
+$PY scripts/make_variant.py final_A seq=4  # runs/final_A + submission_final_A.zip (sequence model at double weight)
 
 # 4. verify the archive end to end on the organisers' smoke data (put it in data/smoke/)
 bash scripts/verify_zip.sh v8
+bash scripts/verify_zip.sh final_A

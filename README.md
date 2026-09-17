@@ -8,10 +8,28 @@ Code and write-up for team **DataCouples** in the [DrivenData DaT Parkinson's Ch
 
 | | |
 |---|---|
-| Best public log loss | **0.2356** (AUROC 0.9649), from 0.2463 at the first submission |
-| Best public rank | #14 at the close |
-| Local nested CV of the final ensemble | 0.1990 |
+| **Final private leaderboard** | **#10**, log loss **0.2760** (AUROC 0.9551, second highest in the top ten) |
+| Best public log loss | 0.2344 (from 0.2463 at the first submission) |
+| Local nested CV of the final ensemble | 0.1991 |
 | Experiments run | ~60, of which 5 changes improved the model |
+
+## Submissions
+
+| Submission | What changed | Local CV | Public | Private |
+|---|---|---|---|---|
+| v1 | registration + regional features + 2D CNNs + stack | 0.2120 | 0.2463 | 0.2851 |
+| v2 | bagged over a second fold split | 0.2111 | 0.2446 | 0.2844 |
+| v3 | strong blur/noise augmentation | 0.2035 | 0.2405 | 0.2806 |
+| v3cal | v3 with temperature and probability floor | 0.2066 | 0.2408 | 0.2794 |
+| v6 | dual normalisation, 10-fold runs | 0.2020 | 0.2403 | 0.2826 |
+| v7 | slice-sequence network added | 0.1988 | 0.2364 | 0.2800 |
+| v8 | sequence network bagged over two splits | 0.1990 | 0.2356 | 0.2783 |
+| final B | plain EfficientNets removed | 0.1991 | 0.2364 | 0.2797 |
+| **final A** | **v8 with the sequence model at double weight** | 0.1991 | **0.2344** | **0.2760** |
+
+The private winner scored 0.2532; places 4 to 10 were within 0.004 of each other. Our models ranked
+scans well (high AUROC) but were over-confident on the harder private scans: the calibrated v3cal lost
+to v3 on the public board and beat it on the private one.
 
 ## The final pipeline
 
@@ -69,7 +87,8 @@ reproduce.sh   end-to-end rebuild of the final ensemble
 2. Create a Python 3.12 environment and install PyTorch for your CUDA version, then
    `pip install -r requirements.txt`.
 3. Run `bash reproduce.sh`. On one 8 GB GPU the full rebuild takes roughly 5 hours; the result is
-   `submission_v8.zip`, verified against the smoke data.
+   `submission_v8.zip` and `submission_final_A.zip` (the 10th-place submission), both verified
+   against the smoke data.
 
 GPU training isn't bit-exact (cuDNN), so expect individual models to differ by ~0.004 in log loss
 between runs; the ensemble is much more stable.
